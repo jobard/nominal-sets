@@ -1,8 +1,14 @@
+Require Import Coq.Program.Basics.
+Require Import Coq.Program.Combinators.
+Require Import Coq.Arith.Peano_dec.
+Require Import List.
+Import ListNotations.
+
+(*
 Require Import Relations.
 Require Import Setoid.
 Require Import Morphisms.
-Require Import List.
-Import Lists.List.ListNotations.
+*)
 
 Set Implicit Arguments.
 
@@ -22,11 +28,6 @@ Structure group :=
 Notation "1" := (group_id _).
 Notation "x ^-1" := (group_inv _ x) (at level 30, format "x ^-1").
 Notation "x * y" := (group_op _ x y).
-
-Lemma test_group (G: group) (x: G) : x^-1 * x = 1.
-Proof.
-  apply group_left_inv.
-Qed.
 
 Lemma group_inv_unique (G: group) (g h: G) : g * h = 1 -> g^-1 = h.
 Proof.
@@ -55,60 +56,20 @@ Structure homomorphism :=
     hom_inv: forall x, hom (x^-1) = (hom x)^-1;
   }.
 
-(*
 Structure G_set (G: group) :=
   {
     G_set_X :> Type;
     action: G -> G_set_X -> G_set_X;
-    G_set_eq: relation G_set_X;
-    G_set_equiv :> Equivalence G_set_eq;
-    G_set_action_proper :> Proper (eq ==> G_set_eq ==> G_set_eq) action;
-    G_set_id: forall x, G_set_eq (action 1 x) x;
-    G_set_assoc: forall g h x, G_set_eq (action g (action h x)) (action (g * h) x);
-  }.
-Set Printing Coercions.
-Set Printing Implicit.
-Print G_set.
-Check (fun G (X: G_set G) (x: X) => x).
-*)
-
-Class G_set (G: group) :=
-  {
-    G_set_X :> Type;
-    action: G -> G_set_X -> G_set_X;
-    G_set_eq: relation G_set_X;
-    G_set_equiv :> Equivalence G_set_eq;
-    G_set_action_proper :> Proper (eq ==> G_set_eq ==> G_set_eq) action;
-    G_set_id: forall x, G_set_eq (action 1 x) x;
-    G_set_assoc: forall g h x, G_set_eq (action g (action h x)) (action (g * h) x);
+    G_set_id: forall x,  (action 1 x) = x;
+    G_set_assoc: forall g h x, (action g (action h x)) = (action (g * h) x);
   }.
 
-Notation "g ** x" := (action g x) (at level 45, right associativity).
-Notation "x == y" := (G_set_eq x y) (at level 70, no associativity).
-About action.
-About G_set_eq.
-
-Coercion G_set_to_type (G: group) : G_set G -> Type.
-intros [X _ _ _ _ _ _]. exact X.
-Defined.
-
-Set Printing Coercions.
-Set Printing Implicit.
-Print G_set.
-Check (fun G (X: G_set G) (x: X) => x).
-Unset Printing Coercions.
-Unset Printing Implicit.
+Notation "g ** x" := (action _ g x) (at level 45, right associativity).
 
 Ltac gsimpl :=
   repeat progress rewrite ?group_left_id, ?group_right_id, ?group_left_inv, ?group_right_inv,
   ?group_inv_id, ?group_inv_op,
   ?G_set_id, ?G_set_assoc.
-
-Print  G_set.
-Lemma test_G_set (G: group) (X: G_set G) (x: G_set_X) (g: G): g ** g^-1 ** x == x.
-Proof.
-  now gsimpl.
-Qed.
 
 Definition equivariant_func (G: group) (X Y: G_set G) (F: X -> Y) (x: X) (g: G) :=
   F (g ** x) = g ** F x.
@@ -120,26 +81,12 @@ Definition prod_action (G: group) (X Y: G_set G) (g: G) (p: X * Y) : X * Y :=
 
 Arguments prod_action {G X Y}.
 
-(*
 Canonical Structure cartesian_prod (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X * Y)%type prod_action).
 - intros [x y]. cbn. now gsimpl.
 - intros g h [x y]. cbn. now gsimpl.
 Defined.
-*)
 
-Definition prod_eq (G: group) (X Y: G_set G) (p1 p2: X * Y) :=
-  match p1, p2 with
-  | (x1, y1), (x2, y2) => x1 == x2 /\ y1 == y2
-  end.
-
-Instance cartesian_prod (G: group) (X Y: G_set G) : G_set G.
-apply (@Build_G_set G (X * Y)%type prod_action (prod_eq X Y)).
-- admit.
-- intros g h H [x1 y1] [x2 y2] [H1 H2]. cbn. now rewrite H, H1, H2.
-- intros [x y]. cbn. now gsimpl.
-- intros g h [x y]. cbn. now gsimpl.
-Admitted.
 
 Definition union_action (G: group) (X Y: G_set G) (g: G) (s: X + Y) : X + Y :=
   match s with
@@ -149,90 +96,111 @@ Definition union_action (G: group) (X Y: G_set G) (g: G) (s: X + Y) : X + Y :=
 
 Arguments union_action {G X Y}.
 
-(*
 Canonical Structure disjoint_union (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X + Y) union_action).
 - intros [x|y]; cbn; now gsimpl.
 - intros g h [x|y]; cbn; now gsimpl.
 Defined.
-*)
-
-Definition union_eq (G: group) (X Y: G_set G) (s1 s2: X + Y) :=
-  match s1, s2 with
-  | inl x1, inl x2 => x1 == x2
-  | inr y1, inr y2 => y1 == y2
-  | _ , _ => False
-  end.
-
-Instance disjoint_union (G: group) (X Y: G_set G) : G_set G.
-apply (@Build_G_set G (X + Y) union_action (union_eq X Y)).
-- admit.
-- intros g h -> [x1|y1] [x2|y2]; cbn; intros H; first [now rewrite H|destruct H].
-- intros [x|y]; cbn; now gsimpl.
-- intros g h [x|y]; cbn; now gsimpl.
-Admitted.
 
 Definition func_action (G: group) (X Y: G_set G) (g: G) (F: X -> Y) : X -> Y :=
   fun x => g ** F (g ^-1 ** x).
 
 Arguments func_action {G X Y}.
 
-(*
+Axiom func_eq : forall (G: group) (X Y: G_set G) (F1 F2: X -> Y), (forall (x: X), F1 x = F2 x) -> F1 = F2.
+
 Canonical Structure func (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X -> Y) func_action).
-- intros F. unfold func_action. rewrite G_set_id.
--
-Abort.
-*)
-
-Definition func_eq (G: group) (X Y: G_set G) (F1 F2: X -> Y) := forall x1 x2, x1 == x2 -> F1 x1 == F2 x2.
-
-Instance func (G: group) (X Y: G_set G) : G_set G.
-apply (@Build_G_set G (X -> Y) func_action (func_eq X Y)).
-- admit.
-- intros g h -> F1 F2. unfold func_eq. intros H x1 x2 Hx. unfold func_action.
-  rewrite (H _ (h^-1 ** x2)); [reflexivity|now rewrite Hx].
-- intros F x1 x2 Hx. unfold func_action. gsimpl. admit.
-- intros g h F x1 x2 Hx. unfold func_action. gsimpl. admit.
-Admitted.
+- intros F. unfold func_action. apply func_eq. intros x. now gsimpl.
+- intros g h F. eapply func_eq. unfold func_action. intros x. now gsimpl.
+Defined.
 
 Definition equivariant_subset (G: group) (X: G_set G) (P: X -> Prop) :=
   forall g x, P x -> P (g ** x).
 
-Inductive perm_minimal (A: Type) : list A -> list A -> Prop :=
-  min_nil: perm_minimal [] []
-| min_cons a a' l l': a <> a' -> perm_minimal l l' -> perm_minimal (a::l) (a'::l').
+Definition atom := nat.
 
-Lemma perm_minimal_comm (A: Type) (f g: list A) : perm_minimal f g -> perm_minimal g f.
-Proof.
-  revert g. induction f as [|a l IH]; intros g H.
-  - inversion H. constructor.
-  - inversion H. constructor; now auto.
-Qed.
-
-Structure perm (A: Type) :=
+Structure perm :=
   {
-    perm_f:> list A;
-    perm_g: list A;
-    perm_unique_f: NoDup perm_f;
-    perm_unique_g: NoDup perm_g;
-    perm_min: perm_minimal perm_f perm_g;
-    (*
-    perm_right_inv: forall a, f (g a) = a;
-    perm_left_inv: forall a, g (f a) = a;
-    *)
+    perm_f:> atom -> atom;
+    perm_g: atom -> atom;
+    perm_right_inv: forall a, perm_f (perm_g a) = a;
+    perm_left_inv: forall a, perm_g (perm_f a) = a;
   }.
 
-Definition transposition (A: Type) (pi: perm A) := length pi <= 1.
-
-Definition perm_id (A: Type) : perm A.
-apply (Build_perm (NoDup_nil A) (NoDup_nil A) (min_nil A)).
+Definition perm_id : perm.
+apply (@Build_perm (@id atom) (@id atom)); intros a; reflexivity.
 Defined.
 
-Definition perm_inv (A: Type) (pi: perm A) : perm A.
-destruct pi as [f g df_f df_g E]. apply (@Build_perm A g f df_g df_f). 
-now apply perm_minimal_comm.
+Definition perm_inv (pi: perm) : perm.
+destruct pi as [f g H1 H2]. apply (Build_perm g f H2 H1). 
 Defined.
 
-Canonical Structure group_perm (A: Type) : group.
-eapply (@Build_group _ (perm_id A) (@perm_inv A)).
+Definition perm_op (pi pi': perm) : perm.
+destruct pi as [f g H1 H2]. destruct pi' as [f' g' H3 H4].
+apply (Build_perm (compose f f') (compose g' g)).
+- intros a. unfold compose. now rewrite H3, H1.
+- intros a. unfold compose. now rewrite H2, H4.
+Defined.
+
+Axiom perm_eq : forall (pi pi': perm), (forall a, pi a = pi' a) -> pi = pi'.
+
+Canonical Structure group_perm : group.
+apply (@Build_group _ perm_id perm_inv perm_op).
+- intros pi1 pi2 pi3. apply perm_eq. intros a. destruct pi1, pi2, pi3. unfold perm_op.
+  cbn. now rewrite compose_assoc.
+- intros pi. apply perm_eq. intros a. destruct pi. unfold perm_op. cbn.
+  now rewrite compose_id_left.
+- intros pi. apply perm_eq. intros a. destruct pi. unfold perm_op. cbn.
+  now rewrite compose_id_right.
+- intros pi. apply perm_eq. intros a. destruct pi. unfold perm_op. cbn.
+  unfold id, compose. auto.
+- intros pi. apply perm_eq. intros a. destruct pi. unfold perm_op. cbn.
+  unfold id, compose. auto.
+Defined.
+
+Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
+
+Definition transposition (pi: perm) := exists a, forall b, a <> b -> pi b = b.
+
+Lemma fin_perm_transposition (pi: perm) : transposition pi -> fin_perm pi.
+Proof.
+  intros [a H]. exists [a]. intros x H'. apply H. intros E. rewrite E in H'. apply H'. now constructor.
+Qed.
+
+(* TODO: need fin_perm instead of perm? *)
+Definition support (X: G_set group_perm) (A: atom -> Prop) (x: X) :=
+  forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
+
+Definition fin_pred (A: atom -> Prop) := exists l, forall a, A a ->  In a l.
+
+Definition nominal (X: G_set group_perm) := forall x, exists2 A, support X A x & fin_pred A.
+
+Definition supp (X: G_set group_perm) x := fun a => forall A, support X A x -> A a.
+
+Definition perm_action (pi: perm) a := pi a.
+
+Canonical Structure G_set_atom : G_set group_perm.
+apply (@Build_G_set group_perm atom perm_action).
+- intros a. now cbn.
+- intros g h x. now destruct g, h.
+Defined.
+
+Lemma nominal_atom : nominal G_set_atom.
+Proof.
+  intros a. exists (fun x => x = a).
+  - intros pi H. now apply H.
+  - exists [a]. intros x E. now constructor.
+Qed.
+
+Lemma supp_func (X Y: G_set group_perm) (A: atom -> Prop) (F: X -> Y) :
+  support _ A F <-> forall (pi: perm), (forall a, A a -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
+Proof.
+  split; intros H.
+  - intros pi H' x. specialize (H pi H').
+    assert (E: F (pi ** x) = (pi ** F) (pi ** x)) by now rewrite H.
+    rewrite E. cbn. unfold func_action. now gsimpl.
+  - intros pi H'. specialize (H (pi^-1)). apply func_eq. intros x. cbn. unfold func_action.
+    rewrite H; gsimpl; auto. intros a Aa. specialize (H' a Aa). destruct pi as [pi pi' Hpi Hpi'].
+    cbn. cbn in H'. now rewrite <- H' at 1.
+Qed.
