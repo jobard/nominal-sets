@@ -29,6 +29,8 @@ Notation "1" := (group_id _).
 Notation "x ^-1" := (group_inv _ x) (at level 30, format "x ^-1").
 Notation "x * y" := (group_op _ x y).
 
+(* We show that the right inverse is unique in order to prove the following two well known
+lemmas about inverses. These lemmas can be used to simplify goals. *)
 Lemma group_inv_unique (G: group) (g h: G) : g * h = 1 -> g^-1 = h.
 Proof.
   intros H. rewrite <- (group_right_id _ (g^-1)). rewrite <- H, <- group_assoc.
@@ -56,6 +58,7 @@ Structure homomorphism :=
     hom_inv: forall x, hom (x^-1) = (hom x)^-1;
   }.
 
+(* A G-set is a set X with a group action on X which respects the group structure. *)
 Structure G_set (G: group) :=
   {
     G_set_X :> Type;
@@ -66,6 +69,7 @@ Structure G_set (G: group) :=
 
 Notation "g ** x" := (action _ g x) (at level 45, right associativity).
 
+(* We define the tactic gsimpl to simplify goals by using the group and G-set laws. *)
 Ltac gsimpl :=
   repeat progress rewrite ?group_left_id, ?group_right_id, ?group_left_inv, ?group_right_inv,
   ?group_inv_id, ?group_inv_op,
@@ -87,7 +91,6 @@ apply (@Build_G_set G (X * Y)%type prod_action).
 - intros g h [x y]. cbn. now gsimpl.
 Defined.
 
-
 Definition union_action (G: group) (X Y: G_set G) (g: G) (s: X + Y) : X + Y :=
   match s with
   | inl x => inl (g ** x)
@@ -107,12 +110,10 @@ Definition func_action (G: group) (X Y: G_set G) (g: G) (F: X -> Y) : X -> Y :=
 
 Arguments func_action {G X Y}.
 
-Axiom func_eq : forall (G: group) (X Y: G_set G) (F1 F2: X -> Y), (forall (x: X), F1 x = F2 x) -> F1 = F2.
-
 Canonical Structure func (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X -> Y) func_action).
-- intros F. unfold func_action. apply func_eq. intros x. now gsimpl.
-- intros g h F. eapply func_eq. unfold func_action. intros x. now gsimpl.
+- intros F. unfold func_action. extensionality x. now gsimpl.
+- intros g h F. extensionality x. unfold func_action. now gsimpl.
 Defined.
 
 Definition equivariant_subset (G: group) (X: G_set G) (P: X -> Prop) :=
@@ -179,7 +180,7 @@ Qed.
 (* TODO: need fin_perm instead of perm? *)
 (* A predicate on atoms supports an element x of a Perm-set X if the action of every permutation
 which is the identity on elements of A does not change x aswell. *)
-Definition support (X: G_set group_perm) (A: atom -> Prop) (x: X) :=
+Definition support {X: G_set group_perm} (A: atom -> Prop) (x: X) :=
   forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
 
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
@@ -188,19 +189,21 @@ Definition fin_pred (A: atom -> Prop) := exists l, forall a, A a ->  In a l.
 
 (* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
 supports the element) then then we call X a nominal set. *)
-Definition nominal (X: G_set group_perm) := forall x, exists2 A, support X A x & fin_pred A.
+Definition nominal (X: G_set group_perm) := forall (x: X), exists2 A, support A x & fin_pred A.
 
 (* The predicate supp is the intersection of all predicates that support the given element x. *)
-Definition supp (X: G_set group_perm) x := fun a => forall A, support X A x -> A a.
+(* TODO: is this def correct? *)
+Definition supp {X: G_set group_perm} (x: X) := fun a => forall A, support A x -> A a.
 
-Lemma supp_sub_support (X: G_set group_perm) A x : support X A x -> forall a, supp X x a -> A a.
+Lemma supp_sub_support (X: G_set group_perm) A (x: X) :
+  fin_pred A -> support A x -> forall a, supp x a -> A a.
 Proof.
-  intros S a H. apply H, S.
+  intros fA S a H. apply H, S.
 Qed.
 
-Lemma support_supp (X: G_set group_perm) A x : support X A x -> support X (supp X x) x.
+Lemma support_supp (X: G_set group_perm) A (x: X) : support A x -> support (supp x) x.
 Proof.
-  intros S pi H. apply S. intros a Aa. apply H. intros A'.
+  intros S pi H. apply S. intros a Aa. apply H. intros A' S'.
 Abort.
 
 (* We can define an action of permutations on atoms. *)
@@ -221,14 +224,25 @@ Proof.
   - exists [a]. intros x E. now constructor.
 Qed.
 
-Lemma supp_func (X Y: G_set group_perm) (A: atom -> Prop) (F: X -> Y) :
-  support _ A F <-> forall (pi: perm), (forall a, A a -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
+Lemma support_func (X Y: G_set group_perm) (A: atom -> Prop) (F: X -> Y) :
+  support A F <-> forall (pi: perm), (forall a, A a -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
 Proof.
   split; intros H.
   - intros pi H' x. specialize (H pi H').
     assert (E: F (pi ** x) = (pi ** F) (pi ** x)) by now rewrite H.
     rewrite E. cbn. unfold func_action. now gsimpl.
-  - intros pi H'. specialize (H (pi^-1)). apply func_eq. intros x. cbn. unfold func_action.
+  - intros pi H'. specialize (H (pi^-1)). extensionality x. cbn. unfold func_action.
     rewrite H; gsimpl; auto. intros a Aa. specialize (H' a Aa). destruct pi as [pi pi' Hpi Hpi'].
-    cbn. cbn in H'. now rewrite <- H' at 1.
+    now rewrite <- H' at 1.
 Qed.
+
+(* TODO: need X and Y be nominal? *)
+Definition freshness (X Y: G_set group_perm) (x: X) (y: Y) :=
+  nominal X -> nominal Y -> forall a, ~ (supp x a /\ supp y a).
+
+Notation "x # y" := (freshness x y) (at level 40).
+
+Lemma fresh_atom Y (a: G_set_atom) y : a # y <-> ~ supp y a.
+
+Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
+
