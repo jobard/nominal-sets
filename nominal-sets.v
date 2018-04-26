@@ -118,8 +118,12 @@ Defined.
 Definition equivariant_subset (G: group) (X: G_set G) (P: X -> Prop) :=
   forall g x, P x -> P (g ** x).
 
+(* We use the natural numbers as atoms, i.e. names. This is convenient since for a finite
+structure we can easily find an unused name. *)
 Definition atom := nat.
 
+(* Permutations are bijective functions over atoms. We model this by requiring the existence
+of an inverse function. *)
 Structure perm :=
   {
     perm_f:> atom -> atom;
@@ -128,6 +132,8 @@ Structure perm :=
     perm_left_inv: forall a, perm_g (perm_f a) = a;
   }.
 
+(* Permutations form a group. Thus we define identity and inverse permutations, as well as
+the composition operation on permutations. *)
 Definition perm_id : perm.
 apply (@Build_perm (@id atom) (@id atom)); intros a; reflexivity.
 Defined.
@@ -145,6 +151,8 @@ Defined.
 
 Axiom perm_eq : forall (pi pi': perm), (forall a, pi a = pi' a) -> pi = pi'.
 
+(* Using the above definitions we obtain the symmetric group, i.e. group of permutations.
+We denote this group by Perm. *)
 Canonical Structure group_perm : group.
 apply (@Build_group _ perm_id perm_inv perm_op).
 - intros pi1 pi2 pi3. apply perm_eq. intros a. destruct pi1, pi2, pi3. unfold perm_op.
@@ -169,23 +177,43 @@ Proof.
 Qed.
 
 (* TODO: need fin_perm instead of perm? *)
+(* A predicate on atoms supports an element x of a Perm-set X if the action of every permutation
+which is the identity on elements of A does not change x aswell. *)
 Definition support (X: G_set group_perm) (A: atom -> Prop) (x: X) :=
   forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
 
+(* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
+That means there is a list of all such atoms. *)
 Definition fin_pred (A: atom -> Prop) := exists l, forall a, A a ->  In a l.
 
+(* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
+supports the element) then then we call X a nominal set. *)
 Definition nominal (X: G_set group_perm) := forall x, exists2 A, support X A x & fin_pred A.
 
+(* The predicate supp is the intersection of all predicates that support the given element x. *)
 Definition supp (X: G_set group_perm) x := fun a => forall A, support X A x -> A a.
 
+Lemma supp_sub_support (X: G_set group_perm) A x : support X A x -> forall a, supp X x a -> A a.
+Proof.
+  intros S a H. apply H, S.
+Qed.
+
+Lemma support_supp (X: G_set group_perm) A x : support X A x -> support X (supp X x) x.
+Proof.
+  intros S pi H. apply S. intros a Aa. apply H. intros A'.
+Abort.
+
+(* We can define an action of permutations on atoms. *)
 Definition perm_action (pi: perm) a := pi a.
 
+(* Using the above action we can transform the set of atoms into a Perm-set. *)
 Canonical Structure G_set_atom : G_set group_perm.
 apply (@Build_G_set group_perm atom perm_action).
 - intros a. now cbn.
 - intros g h x. now destruct g, h.
 Defined.
 
+(* This Perm-set over atoms is even nominal. *)
 Lemma nominal_atom : nominal G_set_atom.
 Proof.
   intros a. exists (fun x => x = a).
