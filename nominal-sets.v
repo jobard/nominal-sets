@@ -2,7 +2,7 @@ Require Import Coq.Program.Basics.
 Require Import Coq.Program.Combinators.
 Require Import Coq.Arith.Peano_dec.
 Require Import Coq.Arith.Le.
-Require Import Omega.
+Require Import PeanoNat.
 Require Import List.
 Import ListNotations.
 
@@ -172,12 +172,24 @@ Defined.
 
 Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
 
-Definition transposition (pi: perm) := exists a, forall b, a <> b -> pi b = b.
+Definition transp (a b c: atom) :=
+  if (Nat.eq_dec c a) then b else if (Nat.eq_dec c b) then a else c.
 
-Lemma fin_perm_transposition (pi: perm) : transposition pi -> fin_perm pi.
+Lemma transp_involution a b c : transp a b (transp a b c) = c.
+Proof.
+  (* decide c = a and c = b *)
+Admitted.
+
+Canonical Structure transp_perm (a b: atom) : perm.
+apply (Build_perm (transp a b) (transp a b)); apply transp_involution.
+Defined.
+
+(* TODO
+Lemma transp_fin_perm (a b: atom) : fin_perm (transp a b).
 Proof.
   intros [a H]. exists [a]. intros x H'. apply H. intros E. rewrite E in H'. apply H'. now constructor.
 Qed.
+*)
 
 Definition perm_set := G_set group_perm.
 
@@ -188,25 +200,25 @@ Definition support {X: perm_set} (A: atom -> Prop) (x: X) :=
 
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
 That means there is a list of all such atoms. *)
-Definition fin_pred (A: atom -> Prop) := exists l, forall a, A a ->  In a l.
+Definition fin_pred (A: atom -> Prop) := { l | forall a, A a ->  In a l }.
 
 Hint Unfold fin_pred.
 
-Section atom_not_in_fin_pred.
+Module atom_not_in_fin_pred.
   Definition max_list l := fold_left max l 0.
-  Local Definition new_atom l := S (max_list l).
+  Definition new_atom l := S (max_list l).
 
   Lemma fold_max_mono l n m : n <= m -> fold_left max l n <= fold_left max l m.
   Proof.
     revert n m. induction l; auto with arith.
-    intros n m H. cbn. apply IHl. auto with arith.
-    admit.
-  Admitted.
+    Search max.
+    intros n m H. cbn. now apply IHl, Nat.max_le_compat_r.
+  Qed.
 
   Lemma fold_max_inc l b : b <= fold_left max l b.
   Proof.
     induction l; auto.
-    cbn. eapply le_trans. now apply IHl. apply fold_max_mono. auto with arith.
+    cbn. eapply le_trans. now apply IHl. apply fold_max_mono, Nat.le_max_l.
   Qed.
 
   Lemma all_le l : forall a, In a l -> a <= max_list l.
@@ -216,24 +228,24 @@ Section atom_not_in_fin_pred.
     - eapply le_trans. now apply IH. cbn. apply fold_max_mono. auto with arith.
   Qed.
   
-  Lemma new_atom_list l : ~ In (new_atom l) l.
+  Lemma new_atom_not_in_list l : ~ In (new_atom l) l.
   Proof.
     intros H. apply all_le in H. unfold new_atom in H. revert H. apply Nat.nle_succ_diag_l.
   Qed.
 
-  Lemma new_fin_pred A : fin_pred A -> exists a, ~ A a.
+  Lemma new_atom_list l: { a:atom | ~ In a l}.
   Proof.
-    intros [l H]. exists (new_atom l). intros HA. eapply new_atom_list, H, HA.
+    exists (new_atom l). intros H. eapply new_atom_not_in_list, H.
   Qed.
 End atom_not_in_fin_pred.
 
-Definition fin_support {X: perm_set} (A: atom -> Prop) (x: X) := support A x /\ fin_pred A.
+Definition fin_support {X: perm_set} (A: atom -> Prop) (x: X) := (support A x * fin_pred A)%type.
 
 Hint Unfold fin_support.
 
 (* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
 supports the element) then then we call X a nominal set. *)
-Definition nominal (X: perm_set) := forall (x: X), exists A, fin_support A x.
+Definition nominal (X: perm_set) := forall (x: X), { A : _ & fin_support A x}.
 
 (* The predicate supp is the intersection of all predicates that support the given element x. *)
 Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> A a.
@@ -246,7 +258,7 @@ Qed.
 
 Lemma not_supp (X: perm_set) (pi: perm) (x: X) (a: atom) : pi a <> a -> pi ** x = x -> ~ supp x a.
 Proof.
-  intros H E S. apply H, S. intros pi'.
+  intros H E S.
 Abort.
 
 Lemma support_supp (X: perm_set) A (x: X) : support A x -> support (supp x) x.
@@ -285,7 +297,7 @@ Proof.
 Qed.
 
 (*
-Definition freshness (X Y: perm_set) (x: X) (y: Y) :=
+Definition freshness {X Y: perm_set} (x: X) (y: Y) :=
   nominal X -> nominal Y -> forall a, ~ (supp x a /\ supp y a).
 
 Notation "x # y" := (freshness x y) (at level 40).
@@ -297,10 +309,11 @@ Notation "a # y" := (freshness a y) (at level 40).
 
 Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
 
-Lemma fin_support_new_atom (X: perm_set) A (x: X) : fin_support A x -> exists a, a # x.
+(* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
+Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : fin_support A x -> { a | a # x}.
 Proof.
-  intros [S H]. destruct (new_fin_pred H) as [a nAa]. exists a. intros H'.
-  apply nAa, H', S.
+  intros [S H]. destruct H as [l H]. destruct (atom_not_in_fin_pred.new_atom_list l) as [a H'].
+  exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
 Qed.
 
  
