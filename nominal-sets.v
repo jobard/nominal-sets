@@ -1,6 +1,8 @@
 Require Import Coq.Program.Basics.
 Require Import Coq.Program.Combinators.
 Require Import Coq.Arith.Peano_dec.
+Require Import Coq.Arith.Le.
+Require Import Omega.
 Require Import List.
 Import ListNotations.
 
@@ -177,31 +179,77 @@ Proof.
   intros [a H]. exists [a]. intros x H'. apply H. intros E. rewrite E in H'. apply H'. now constructor.
 Qed.
 
-(* TODO: need fin_perm instead of perm? *)
+Definition perm_set := G_set group_perm.
+
 (* A predicate on atoms supports an element x of a Perm-set X if the action of every permutation
 which is the identity on elements of A does not change x aswell. *)
-Definition support {X: G_set group_perm} (A: atom -> Prop) (x: X) :=
+Definition support {X: perm_set} (A: atom -> Prop) (x: X) :=
   forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
 
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
 That means there is a list of all such atoms. *)
 Definition fin_pred (A: atom -> Prop) := exists l, forall a, A a ->  In a l.
 
+Hint Unfold fin_pred.
+
+Section atom_not_in_fin_pred.
+  Definition max_list l := fold_left max l 0.
+  Local Definition new_atom l := S (max_list l).
+
+  Lemma fold_max_mono l n m : n <= m -> fold_left max l n <= fold_left max l m.
+  Proof.
+    revert n m. induction l; auto with arith.
+    intros n m H. cbn. apply IHl. auto with arith.
+    admit.
+  Admitted.
+
+  Lemma fold_max_inc l b : b <= fold_left max l b.
+  Proof.
+    induction l; auto.
+    cbn. eapply le_trans. now apply IHl. apply fold_max_mono. auto with arith.
+  Qed.
+
+  Lemma all_le l : forall a, In a l -> a <= max_list l.
+  Proof.
+    induction l as [| b l IH]; intros a; [intros []|intros [E|H]].
+    - rewrite E. cbn. apply fold_max_inc.
+    - eapply le_trans. now apply IH. cbn. apply fold_max_mono. auto with arith.
+  Qed.
+  
+  Lemma new_atom_list l : ~ In (new_atom l) l.
+  Proof.
+    intros H. apply all_le in H. unfold new_atom in H. revert H. apply Nat.nle_succ_diag_l.
+  Qed.
+
+  Lemma new_fin_pred A : fin_pred A -> exists a, ~ A a.
+  Proof.
+    intros [l H]. exists (new_atom l). intros HA. eapply new_atom_list, H, HA.
+  Qed.
+End atom_not_in_fin_pred.
+
+Definition fin_support {X: perm_set} (A: atom -> Prop) (x: X) := support A x /\ fin_pred A.
+
+Hint Unfold fin_support.
+
 (* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
 supports the element) then then we call X a nominal set. *)
-Definition nominal (X: G_set group_perm) := forall (x: X), exists2 A, support A x & fin_pred A.
+Definition nominal (X: perm_set) := forall (x: X), exists A, fin_support A x.
 
 (* The predicate supp is the intersection of all predicates that support the given element x. *)
-(* TODO: is this def correct? *)
-Definition supp {X: G_set group_perm} (x: X) := fun a => forall A, support A x -> A a.
+Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> A a.
 
-Lemma supp_sub_support (X: G_set group_perm) A (x: X) :
-  fin_pred A -> support A x -> forall a, supp x a -> A a.
+Lemma supp_sub_support (X: perm_set) A (x: X) :
+  support A x -> forall a, supp x a -> A a.
 Proof.
-  intros fA S a H. apply H, S.
+  intros S a H. apply H, S.
 Qed.
 
-Lemma support_supp (X: G_set group_perm) A (x: X) : support A x -> support (supp x) x.
+Lemma not_supp (X: perm_set) (pi: perm) (x: X) (a: atom) : pi a <> a -> pi ** x = x -> ~ supp x a.
+Proof.
+  intros H E S. apply H, S. intros pi'.
+Abort.
+
+Lemma support_supp (X: perm_set) A (x: X) : support A x -> support (supp x) x.
 Proof.
   intros S pi H. apply S. intros a Aa. apply H. intros A' S'.
 Abort.
@@ -210,7 +258,7 @@ Abort.
 Definition perm_action (pi: perm) a := pi a.
 
 (* Using the above action we can transform the set of atoms into a Perm-set. *)
-Canonical Structure G_set_atom : G_set group_perm.
+Canonical Structure G_set_atom : perm_set.
 apply (@Build_G_set group_perm atom perm_action).
 - intros a. now cbn.
 - intros g h x. now destruct g, h.
@@ -219,12 +267,12 @@ Defined.
 (* This Perm-set over atoms is even nominal. *)
 Lemma nominal_atom : nominal G_set_atom.
 Proof.
-  intros a. exists (fun x => x = a).
+  intros a. exists (fun x => x = a). split.
   - intros pi H. now apply H.
   - exists [a]. intros x E. now constructor.
 Qed.
 
-Lemma support_func (X Y: G_set group_perm) (A: atom -> Prop) (F: X -> Y) :
+Lemma support_func (X Y: perm_set) (A: atom -> Prop) (F: X -> Y) :
   support A F <-> forall (pi: perm), (forall a, A a -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
 Proof.
   split; intros H.
@@ -236,13 +284,23 @@ Proof.
     now rewrite <- H' at 1.
 Qed.
 
-(* TODO: need X and Y be nominal? *)
-Definition freshness (X Y: G_set group_perm) (x: X) (y: Y) :=
+(*
+Definition freshness (X Y: perm_set) (x: X) (y: Y) :=
   nominal X -> nominal Y -> forall a, ~ (supp x a /\ supp y a).
 
 Notation "x # y" := (freshness x y) (at level 40).
+*)
 
-Lemma fresh_atom Y (a: G_set_atom) y : a # y <-> ~ supp y a.
+Definition freshness {Y: perm_set} a (y: Y) := ~ supp y a.
+
+Notation "a # y" := (freshness a y) (at level 40).
 
 Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
 
+Lemma fin_support_new_atom (X: perm_set) A (x: X) : fin_support A x -> exists a, a # x.
+Proof.
+  intros [S H]. destruct (new_fin_pred H) as [a nAa]. exists a. intros H'.
+  apply nAa, H', S.
+Qed.
+
+ 
