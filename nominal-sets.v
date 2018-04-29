@@ -1,6 +1,7 @@
 Require Import Coq.Program.Basics.
 Require Import Coq.Program.Combinators.
 Require Import Coq.Arith.Peano_dec.
+Require Import Coq.Arith.EqNat.
 Require Import Coq.Arith.Le.
 Require Import PeanoNat.
 Require Import List.
@@ -173,23 +174,33 @@ Defined.
 Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
 
 Definition transp (a b c: atom) :=
-  if (Nat.eq_dec c a) then b else if (Nat.eq_dec c b) then a else c.
+  if (c =? a) then b else if (c =? b) then a else c.
 
 Lemma transp_involution a b c : transp a b (transp a b c) = c.
 Proof.
-  (* decide c = a and c = b *)
-Admitted.
-
-Canonical Structure transp_perm (a b: atom) : perm.
-apply (Build_perm (transp a b) (transp a b)); apply transp_involution.
-Defined.
-
-(* TODO
-Lemma transp_fin_perm (a b: atom) : fin_perm (transp a b).
-Proof.
-  intros [a H]. exists [a]. intros x H'. apply H. intros E. rewrite E in H'. apply H'. now constructor.
+  unfold transp. remember (c =? a) as ca eqn: H. remember (c =? b) as cb eqn: H'.
+  symmetry in H, H'. destruct ca.
+  - destruct cb.
+    + apply beq_nat_true in H. apply beq_nat_true in H'.
+      rewrite <- H, <- H'. now rewrite <- beq_nat_refl.
+    + apply beq_nat_true in H. rewrite <- H. enough (H'': (b =? c) = false).
+      * rewrite H''. now rewrite <- beq_nat_refl.
+      * apply beq_nat_false_iff; apply beq_nat_false in H'; auto.
+  - destruct cb.
+    + rewrite <- beq_nat_refl. symmetry. now apply beq_nat_true.
+    + now rewrite H, H'.
 Qed.
-*)
+
+Canonical Structure transp_perm (a b: atom) : perm :=
+  Build_perm (transp a b) (transp a b) (transp_involution a b) (transp_involution a b).
+
+Lemma transp_fin_perm (a b: atom) : fin_perm (transp_perm a b).
+Proof.
+  exists [a;b]. cbn. intros x H. unfold transp. assert (H' : x <> a) by (intros E; apply H; now left).
+  assert (H'' : x <> b) by (intros E; apply H; right; now left).
+  apply beq_nat_false_iff in H'. apply beq_nat_false_iff in H''.
+  now rewrite H', H''.
+Qed.
 
 Definition perm_set := G_set group_perm.
 
