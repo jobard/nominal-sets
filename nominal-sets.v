@@ -171,6 +171,9 @@ apply (@Build_group _ perm_id perm_inv perm_op).
   unfold id, compose. auto.
 Defined.
 
+Lemma perm_op_simpl (pi pi': perm) a : (pi * pi') a = pi (pi' a).
+Proof. now destruct pi, pi'. Qed.
+
 Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
 
 Definition transp (a b c: atom) :=
@@ -355,9 +358,27 @@ Section lambda_calculus.
     + now rewrite IHs.
   - intros pi pi' s. revert pi pi'.
     induction s as [a|s IHs t IHt|a s IHs]; intros pi pi'; cbn in *.
-    + admit.
+    + now rewrite perm_op_simpl.
     + now rewrite IHs, IHt.
-    + rewrite IHs. admit.
+    + now rewrite IHs, perm_op_simpl.
+  Defined.
 
+  Lemma fin_support_form (s: form) : {A : _ & fin_support A s}.
+  Proof.
+    induction s as [a|s IHs t IHt|a s IHs].
+    - exists (fun x => x = a). split.
+      + intros pi H. cbn. rewrite H; auto.
+      + exists [a]. intros x ->. now constructor.
+    - destruct IHs as [A [S Hs]]. destruct IHt as [A' [S' Ht]].
+      exists (fun x => A x \/ A' x). split.
+      + intros pi H. cbn. rewrite S, S'; auto.
+      + destruct Hs as [l Hs]. destruct Ht as [l' Ht].
+        exists (l ++ l'). intros a [H|H]; apply in_or_app; auto.
+    - destruct IHs as [A [S Hs]]. exists (fun x => x = a \/ A x). split.
+      + intros pi H. cbn. rewrite H, S; auto.
+      + destruct Hs as [l Hs]. exists (a :: l). intros x [-> | Ax]; [now constructor | apply in_cons].
+        auto.
+  Qed.
+  
 End lambda_calculus.
  
