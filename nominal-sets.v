@@ -341,5 +341,23 @@ Section lambda_calculus.
   | app (s t: form) : form
   | lam (a: atom) (s: form) : form.
 
+  Fixpoint action_form (pi: perm) (s: form) :=
+    match s with
+    | var a => var (pi a)
+    | app s t => app (action_form pi s) (action_form pi t)
+    | lam a s => lam (pi a) (action_form pi s)
+    end.
+
+  Canonical Structure perm_set_form : perm_set.
+  apply (Build_G_set group_perm action_form).
+  - intros s. induction s as [a|s IHs t IHt|a s IHs]; cbn in *; auto.
+    + now rewrite IHs, IHt.
+    + now rewrite IHs.
+  - intros pi pi' s. revert pi pi'.
+    induction s as [a|s IHs t IHt|a s IHs]; intros pi pi'; cbn in *.
+    + admit.
+    + now rewrite IHs, IHt.
+    + rewrite IHs. admit.
+
 End lambda_calculus.
  
