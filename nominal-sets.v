@@ -331,7 +331,7 @@ Notation "a # y" := (freshness a y) (at level 40).
 Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
 
 (* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
-Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : fin_support A x -> { a | a # x}.
+Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : fin_support A x -> {a | a # x}.
 Proof.
   intros [S H]. destruct H as [l H]. destruct (atom_not_in_fin_pred.new_atom_list l) as [a H'].
   exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
@@ -379,6 +379,9 @@ Section lambda_calculus.
       + destruct Hs as [l Hs]. exists (a :: l). intros x [-> | Ax]; [now constructor | apply in_cons].
         auto.
   Qed.
+
+  Lemma fresh_atom_form (s: form) : {a | a # s}.
+  Proof. destruct (fin_support_form s). eapply fin_support_fresh_atom. eauto. Qed.
   
 End lambda_calculus.
  
