@@ -209,6 +209,12 @@ which is the identity on elements of A does not change x aswell. *)
 Definition support {X: perm_set} (A: atom -> Prop) (x: X) :=
   forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
 
+Lemma exists_support (X: perm_set) (x: X) : exists A, support A x.
+Proof.
+  exists (fun _ => True). intros pi H. enough (E: pi = perm_id) by (rewrite E; now gsimpl).
+  apply perm_eq. intros a. now apply H.
+Qed.
+
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
 That means there is a list of all such atoms. *)
 Definition fin_pred (A: atom -> Prop) := { l | forall a, A a ->  In a l }.
@@ -272,9 +278,10 @@ Proof.
   intros H E S.
 Abort.
 
-Lemma support_supp (X: perm_set) A (x: X) : support A x -> support (supp x) x.
+Lemma support_supp (X: perm_set) (x: X) : support (supp x) x.
 Proof.
-  intros S pi H. apply S. intros a Aa. apply H. intros A' S'.
+  intros pi H. unfold supp in H. unfold support in H.
+
 Abort.
 
 (* We can define an action of permutations on atoms. *)
@@ -327,4 +334,12 @@ Proof.
   exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
 Qed.
 
+Section lambda_calculus.
+
+  Inductive form :=
+    var (a: atom) : form
+  | app (s t: form) : form
+  | lam (a: atom) (s: form) : form.
+
+End lambda_calculus.
  
