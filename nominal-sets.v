@@ -78,8 +78,8 @@ Ltac gsimpl :=
   ?group_inv_id, ?group_inv_op,
   ?G_set_id, ?G_set_assoc.
 
-Definition equivariant_func (G: group) (X Y: G_set G) (F: X -> Y) (x: X) (g: G) :=
-  F (g ** x) = g ** F x.
+Definition equivariant_func (G: group) (X Y: G_set G) (F: X -> Y) :=
+  forall (x: X) (g: G), F (g ** x) = g ** F x.
   
 Definition prod_action (G: group) (X Y: G_set G) (g: G) (p: X * Y) : X * Y :=
   match p with
@@ -276,16 +276,12 @@ Proof.
   intros S a H. apply H, S.
 Qed.
 
-Lemma not_supp (X: perm_set) (pi: perm) (x: X) (a: atom) : pi a <> a -> pi ** x = x -> ~ supp x a.
-Proof.
-  intros H E S.
-Abort.
-
+(*
 Lemma support_supp (X: perm_set) (x: X) : support (supp x) x.
 Proof.
   intros pi H. unfold supp in H. unfold support in H.
-
 Abort.
+*)
 
 (* We can define an action of permutations on atoms. *)
 Definition perm_action (pi: perm) a := pi a.
@@ -337,6 +333,22 @@ Proof.
   exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
 Qed.
 
+Section list.
+
+  Definition action_list (X: perm_set) (pi: perm) (l: list X) :=
+    map (fun x => (pi ** x)) l.
+
+  Canonical Structure perm_set_list (X: perm_set) : perm_set.
+  apply (Build_G_set group_perm (action_list X)).
+  - intros l. induction l as [|x l IHl]; auto. cbn. gsimpl.
+    unfold action_list in IHl. cbn in IHl. now rewrite IHl.
+  - intros pi pi' l. induction l as [|x l IHl]. auto.
+    cbn. gsimpl. unfold action_list in IHl. cbn in IHl. now rewrite IHl.
+  Defined.
+
+End list.
+
+
 Section lambda_calculus.
 
   Inductive form :=
@@ -363,25 +375,74 @@ Section lambda_calculus.
     + now rewrite IHs, perm_op_simpl.
   Defined.
 
-  Lemma fin_support_form (s: form) : {A : _ & fin_support A s}.
+  Fixpoint Var (s : form) :=
+    match s with
+    | var a => [a]
+    | app s t => Var s ++ Var t
+    | lam a s => a :: Var s
+    end.
+
+  Local Definition form_supp := fun s a => In a (Var s).
+
+  Lemma var_fin_support (s: form) : fin_support (form_supp s) s.
   Proof.
-    induction s as [a|s IHs t IHt|a s IHs].
-    - exists (fun x => x = a). split.
-      + intros pi H. cbn. rewrite H; auto.
-      + exists [a]. intros x ->. now constructor.
-    - destruct IHs as [A [S Hs]]. destruct IHt as [A' [S' Ht]].
-      exists (fun x => A x \/ A' x). split.
-      + intros pi H. cbn. rewrite S, S'; auto.
-      + destruct Hs as [l Hs]. destruct Ht as [l' Ht].
-        exists (l ++ l'). intros a [H|H]; apply in_or_app; auto.
-    - destruct IHs as [A [S Hs]]. exists (fun x => x = a \/ A x). split.
-      + intros pi H. cbn. rewrite H, S; auto.
-      + destruct Hs as [l Hs]. exists (a :: l). intros x [-> | Ax]; [now constructor | apply in_cons].
-        auto.
+    split.
+    - induction s as [a|s IHs t IHt|a s IHs].
+      + intros pi H. cbn. rewrite H; cbv; auto.
+      + intros pi H. cbn. rewrite IHs, IHt; auto.
+        * intros a ?. apply H. unfold form_supp in *. cbn. auto using in_or_app.
+        * intros a ?. apply H. unfold form_supp in *. cbn. auto using in_or_app.
+      + intros pi H. cbn. rewrite H, IHs; unfold form_supp; cbn; auto.
+        intros x Vx. apply H. unfold form_supp; cbn. auto.
+    - exists (Var s). intros a H. auto.
   Qed.
 
   Lemma fresh_atom_form (s: form) : {a | a # s}.
-  Proof. destruct (fin_support_form s). eapply fin_support_fresh_atom. eauto. Qed.
-  
+  Proof. eapply fin_support_fresh_atom. apply var_fin_support. Qed.
+
+  Lemma not_support a A : ~ A a -> ~ support A a. 
+  Proof.
+    intros H S. specialize (S (transp_perm a (1 + a))). cbn in S.
+    unfold transp in S.
+  Abort.
+
+  Lemma var_supp (s : form) :
+    forall a, supp s a <-> form_supp s a.
+  Proof.
+    intros a. split.
+    - apply supp_sub_support. apply var_fin_support.
+    - induction s as [x|s IHs t IHt|x s IHs]; cbn; intros H A S.
+      + unfold support in S. destruct H as [E| []]. rewrite E in S. admit.
+      + apply in_app_or in H. destruct H as [Hs|Ht].
+        * apply IHs; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
+        * apply IHt; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
+      + destruct H as [E|Hs].
+        * rewrite E in S. (* same as for vars *) admit.
+        * apply IHs; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
+  Admitted.
+
+  Lemma test1 a b :
+    transp_perm a b ** (lam a (var a)) = lam b (var b).
+  Proof.
+    cbn. 
+  Admitted.
+
+  Lemma test2 a b :
+    transp_perm a b ** (lam a (var a)) = transp_perm b a ** lam a (var a).
+  Proof.
+    cbn.
+  Admitted.
+
+  Lemma test3 s a b :
+    ~ In a (Var s) -> ~ In b (Var s) -> transp_perm a b ** (lam a s) = lam b s.
+  Proof.
+  Admitted.
+
+  Lemma var_equiv : equivariant_func _ _ Var.
+  Proof.
+    intros s pi. induction s as [a|s IHs t IHt|a s IHs]; auto.
+    - cbn. cbn in IHs, IHt. rewrite IHs, IHt. now rewrite map_app.
+    - cbn. cbn in IHs. now rewrite IHs.
+  Qed.
+
 End lambda_calculus.
- 
