@@ -177,21 +177,20 @@ Proof. now destruct pi, pi'. Qed.
 Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
 
 Definition transp (a b c: atom) :=
-  if (c =? a) then b else if (c =? b) then a else c.
+  if (Nat.eq_dec c a) then b else if (Nat.eq_dec c b) then a else c.
+
+
+Ltac transpsimpl :=
+  match goal with
+  | [ |- context C[transp] ] => unfold transp; transpsimpl
+  | [ |- context C[Nat.eq_dec ?a ?a] ] => let H := fresh "H" in destruct (Nat.eq_dec a a) as [_|H]; [idtac | exfalso; apply H; reflexivity]
+  | [ |- context C[Nat.eq_dec ?a ?b] ] => let H := fresh "H" in destruct (Nat.eq_dec a b) as [H|H]; [rewrite H|idtac]
+  | _ => reflexivity
+  end.
 
 Lemma transp_involution a b c : transp a b (transp a b c) = c.
 Proof.
-  unfold transp. remember (c =? a) as ca eqn: H. remember (c =? b) as cb eqn: H'.
-  symmetry in H, H'. destruct ca.
-  - destruct cb.
-    + apply beq_nat_true in H. apply beq_nat_true in H'.
-      rewrite <- H, <- H'. now rewrite <- beq_nat_refl.
-    + apply beq_nat_true in H. rewrite <- H. enough (H'': (b =? c) = false).
-      * rewrite H''. now rewrite <- beq_nat_refl.
-      * apply beq_nat_false_iff; apply beq_nat_false in H'; auto.
-  - destruct cb.
-    + rewrite <- beq_nat_refl. symmetry. now apply beq_nat_true.
-    + now rewrite H, H'.
+  repeat transpsimpl; congruence.
 Qed.
 
 Canonical Structure transp_perm (a b: atom) : perm :=
@@ -199,10 +198,7 @@ Canonical Structure transp_perm (a b: atom) : perm :=
 
 Lemma transp_fin_perm (a b: atom) : fin_perm (transp_perm a b).
 Proof.
-  exists [a;b]. cbn. intros x H. unfold transp. assert (H' : x <> a) by (intros E; apply H; now left).
-  assert (H'' : x <> b) by (intros E; apply H; right; now left).
-  apply beq_nat_false_iff in H'. apply beq_nat_false_iff in H''.
-  now rewrite H', H''.
+  exists [a;b]. cbn. intros x H. repeat transpsimpl; exfalso; auto.
 Qed.
 
 Definition perm_set := G_set group_perm.
@@ -313,18 +309,43 @@ Proof.
     now rewrite <- H' at 1.
 Qed.
 
-(*
+Lemma not_support a A : ~ A a -> ~ support A a.
+Proof.
+  intros H S. specialize (S (transp_perm a (1 + a))). cbn in S.
+  unfold transp in S.
+Abort.
+
+Lemma supp_atom_refl a : supp a a.
+Proof.
+  intros A S. unfold support in S.
+Admitted.
+
+Lemma supp_atom_unique a x : supp a x -> x = a.
+  intros S. specialize (S (fun b => b = a)). apply S. intros pi H. now apply H.
+Qed.
+
+Lemma supp_atom a x : supp a x <-> x = a.
+Proof.
+  split.
+  - apply supp_atom_unique.
+  - intros E. rewrite E. apply supp_atom_refl.
+Qed.
+
 Definition freshness {X Y: perm_set} (x: X) (y: Y) :=
-  nominal X -> nominal Y -> forall a, ~ (supp x a /\ supp y a).
+  forall a, ~ (supp x a /\ supp y a).
 
-Notation "x # y" := (freshness x y) (at level 40).
-*)
+(* Notation "x # y" := (freshness x y) (at level 40). *)
 
-Definition freshness {Y: perm_set} a (y: Y) := ~ supp y a.
+Lemma freshness_atom {Y: perm_set} a (y: Y) : freshness a y <-> ~ supp y a.
+Proof.
+  split.
+  - intros H S. apply (H a). split; auto. now apply supp_atom.
+  - intros nS x [Sa Sy]. apply nS. apply supp_atom_unique in Sa. now rewrite <- Sa.
+Qed.
 
-Notation "a # y" := (freshness a y) (at level 40).
+Definition atom_freshness {Y: perm_set} a (y: Y) := ~ supp y a.
 
-Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
+Notation "a # y" := (atom_freshness a y) (at level 40).
 
 (* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
 Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : fin_support A x -> {a | a # x}.
@@ -332,6 +353,12 @@ Proof.
   intros [S H]. destruct H as [l H]. destruct (atom_not_in_fin_pred.new_atom_list l) as [a H'].
   exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
 Qed.
+
+Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
+
+Definition freshness_quantifier (A: atom -> Prop) := cofinite_atoms A.
+
+(* Definition alpha_eq := freshness_quantifier. *)
 
 Section list.
 
@@ -400,12 +427,6 @@ Section lambda_calculus.
   Lemma fresh_atom_form (s: form) : {a | a # s}.
   Proof. eapply fin_support_fresh_atom. apply var_fin_support. Qed.
 
-  Lemma not_support a A : ~ A a -> ~ support A a. 
-  Proof.
-    intros H S. specialize (S (transp_perm a (1 + a))). cbn in S.
-    unfold transp in S.
-  Abort.
-
   Lemma var_supp (s : form) :
     forall a, supp s a <-> form_supp s a.
   Proof.
@@ -424,18 +445,19 @@ Section lambda_calculus.
   Lemma test1 a b :
     transp_perm a b ** (lam a (var a)) = lam b (var b).
   Proof.
-    cbn. 
-  Admitted.
+    cbn. now transpsimpl.
+  Qed.
 
   Lemma test2 a b :
     transp_perm a b ** (lam a (var a)) = transp_perm b a ** lam a (var a).
   Proof.
-    cbn.
-  Admitted.
+    cbn. repeat transpsimpl.
+  Qed.
 
   Lemma test3 s a b :
     ~ In a (Var s) -> ~ In b (Var s) -> transp_perm a b ** (lam a s) = lam b s.
   Proof.
+    intros H H'. cbn. transpsimpl.
   Admitted.
 
   Lemma var_equiv : equivariant_func _ _ Var.
