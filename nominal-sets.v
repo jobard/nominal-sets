@@ -311,9 +311,16 @@ Qed.
 
 Lemma not_support a A : ~ A a -> ~ support A a.
 Proof.
-  intros H S. specialize (S (transp_perm a (1 + a))). cbn in S.
-  unfold transp in S.
-Abort.
+  pose (pi := transp_perm a (S a)).
+  assert (H: pi ** a <> a) by (cbn; transpsimpl; auto).
+  intros nAa Sa. specialize (Sa pi). 
+
+  apply H, Sa. intros x Ax. cbn. repeat transpsimpl. congruence. exfalso.
+  apply nAa. rewrite <- Sa. admit.
+  assert (Hx: pi ** x <> x) by (cbn; repeat transpsimpl; congruence).
+  
+  
+Admitted.
 
 Lemma supp_atom_refl a : supp a a.
 Proof.
@@ -339,7 +346,7 @@ Definition freshness {X Y: perm_set} (x: X) (y: Y) :=
 Lemma freshness_atom {Y: perm_set} a (y: Y) : freshness a y <-> ~ supp y a.
 Proof.
   split.
-  - intros H S. apply (H a). split; auto. now apply supp_atom.
+  - intros H S. apply (H a). split; auto. now apply supp_atom_refl.
   - intros nS x [Sa Sy]. apply nS. apply supp_atom_unique in Sa. now rewrite <- Sa.
 Qed.
 
@@ -433,14 +440,16 @@ Section lambda_calculus.
     intros a. split.
     - apply supp_sub_support. apply var_fin_support.
     - induction s as [x|s IHs t IHt|x s IHs]; cbn; intros H A S.
-      + unfold support in S. destruct H as [E| []]. rewrite E in S. admit.
+      + destruct H as [E| []]. rewrite E in S. apply supp_atom_refl.
+        intros pi H. specialize (S pi H). now injection S.
       + apply in_app_or in H. destruct H as [Hs|Ht].
         * apply IHs; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
         * apply IHt; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
       + destruct H as [E|Hs].
-        * rewrite E in S. (* same as for vars *) admit.
+        * rewrite E in S. apply supp_atom_refl.
+          intros pi H. specialize (S pi H). now injection S.
         * apply IHs; auto. intros pi H. specialize (S _ H). cbn in S. cbn. now injection S.
-  Admitted.
+  Qed.
 
   Lemma test1 a b :
     transp_perm a b ** (lam a (var a)) = lam b (var b).
