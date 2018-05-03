@@ -185,7 +185,7 @@ Ltac transpsimpl :=
   | [ |- context C[transp] ] => unfold transp; transpsimpl
   | [ |- context C[Nat.eq_dec ?a ?a] ] => let H := fresh "H" in destruct (Nat.eq_dec a a) as [_|H]; [idtac | exfalso; apply H; reflexivity]
   | [ |- context C[Nat.eq_dec ?a ?b] ] => let H := fresh "H" in destruct (Nat.eq_dec a b) as [H|H]; [rewrite H|idtac]
-  | _ => reflexivity
+  | _ => try congruence
   end.
 
 Lemma transp_involution a b c : transp a b (transp a b c) = c.
@@ -205,14 +205,16 @@ Definition perm_set := G_set group_perm.
 
 (* A predicate on atoms supports an element x of a Perm-set X if the action of every permutation
 which is the identity on elements of A does not change x aswell. *)
-Definition support {X: perm_set} (A: atom -> Prop) (x: X) :=
-  forall (pi: perm), (forall a, A a -> pi a = a) -> pi ** x = x.
+Definition support {X: perm_set} (A: list atom) (x: X) :=
+  forall (pi: perm), (forall a, In a A -> pi a = a) -> pi ** x = x.
 
+(*
 Lemma exists_support (X: perm_set) (x: X) : exists A, support A x.
 Proof.
   exists (fun _ => True). intros pi H. enough (E: pi = perm_id) by (rewrite E; now gsimpl).
   apply perm_eq. intros a. now apply H.
 Qed.
+*)
 
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
 That means there is a list of all such atoms. *)
@@ -255,29 +257,33 @@ Module atom_not_in_fin_pred.
   Qed.
 End atom_not_in_fin_pred.
 
+(*
 Definition fin_support {X: perm_set} (A: atom -> Prop) (x: X) := (support A x * fin_pred A)%type.
 
 Hint Unfold fin_support.
+*)
 
 (* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
 supports the element) then then we call X a nominal set. *)
-Definition nominal (X: perm_set) := forall (x: X), { A : _ & fin_support A x}.
+Definition nominal (X: perm_set) := forall (x: X), { A : _ & support A x}.
 
 (* The predicate supp is the intersection of all predicates that support the given element x. *)
-Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> A a.
+Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> In a A.
 
 Lemma supp_sub_support (X: perm_set) A (x: X) :
-  support A x -> forall a, supp x a -> A a.
+  support A x -> forall a, supp x a -> In a A.
 Proof.
   intros S a H. apply H, S.
 Qed.
 
 (*
-Lemma support_supp (X: perm_set) (x: X) : support (supp x) x.
+Lemma support_supp (X: perm_set) A (x: X) : support A x -> support (supp x) x.
 Proof.
   intros pi H. unfold supp in H. unfold support in H.
 Abort.
 *)
+
+(* TODO section for atom as case study *)
 
 (* We can define an action of permutations on atoms. *)
 Definition perm_action (pi: perm) a := pi a.
@@ -292,13 +298,11 @@ Defined.
 (* This Perm-set over atoms is even nominal. *)
 Lemma nominal_atom : nominal G_set_atom.
 Proof.
-  intros a. exists (fun x => x = a). split.
-  - intros pi H. now apply H.
-  - exists [a]. intros x E. now constructor.
+  intros a. exists [a]. intros pi H. apply H. now constructor.
 Qed.
 
-Lemma support_func (X Y: perm_set) (A: atom -> Prop) (F: X -> Y) :
-  support A F <-> forall (pi: perm), (forall a, A a -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
+Lemma support_func (X Y: perm_set) (A: list atom) (F: X -> Y) :
+  support A F <-> forall (pi: perm), (forall a, In a A -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
 Proof.
   split; intros H.
   - intros pi H' x. specialize (H pi H').
@@ -309,26 +313,30 @@ Proof.
     now rewrite <- H' at 1.
 Qed.
 
+(*
 Lemma not_support a A : ~ A a -> ~ support A a.
 Proof.
   pose (pi := transp_perm a (S a)).
   assert (H: pi ** a <> a) by (cbn; transpsimpl; auto).
   intros nAa Sa. specialize (Sa pi). 
 
-  apply H, Sa. intros x Ax. cbn. repeat transpsimpl. congruence. exfalso.
+  apply H, Sa. intros x Ax. cbn. repeat transpsimpl. exfalso.
   apply nAa. rewrite <- Sa. admit.
   assert (Hx: pi ** x <> x) by (cbn; repeat transpsimpl; congruence).
   
   
 Admitted.
+*)
 
+(* TODO *)
 Lemma supp_atom_refl a : supp a a.
 Proof.
   intros A S. unfold support in S.
 Admitted.
 
 Lemma supp_atom_unique a x : supp a x -> x = a.
-  intros S. specialize (S (fun b => b = a)). apply S. intros pi H. now apply H.
+  intros S. destruct (S [a]) as [H|[]]; auto.
+  intros pi H. apply H. now constructor.
 Qed.
 
 Lemma supp_atom a x : supp a x <-> x = a.
@@ -355,10 +363,10 @@ Definition atom_freshness {Y: perm_set} a (y: Y) := ~ supp y a.
 Notation "a # y" := (atom_freshness a y) (at level 40).
 
 (* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
-Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : fin_support A x -> {a | a # x}.
+Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
 Proof.
-  intros [S H]. destruct H as [l H]. destruct (atom_not_in_fin_pred.new_atom_list l) as [a H'].
-  exists a. intros Su. unfold supp in Su. apply H', H, Su, S.
+  intros H. destruct (atom_not_in_fin_pred.new_atom_list A) as [a H'].
+  exists a. intros Su. unfold supp in Su. apply H', Su, H.
 Qed.
 
 Definition cofinite_atoms := fun A => fin_pred (fun a => ~ A a).
@@ -379,6 +387,15 @@ Section list.
   - intros pi pi' l. induction l as [|x l IHl]. auto.
     cbn. gsimpl. unfold action_list in IHl. cbn in IHl. now rewrite IHl.
   Defined.
+
+  (* TODO nominal *)
+  (* Lemma list_support_refl (X: perm_set) (l: list X) : support l l. *)
+  Lemma list_support_refl l : support l l.
+  Proof.
+    induction l as [|a l IHl]; intros pi H; auto.
+    cbn. rewrite H; [|left; now auto].
+    unfold support in IHl. cbn in IHl. unfold action_list in IHl. rewrite IHl; auto using in_cons.
+  Qed.
 
 End list.
 
@@ -416,26 +433,22 @@ Section lambda_calculus.
     | lam a s => a :: Var s
     end.
 
-  Local Definition form_supp := fun s a => In a (Var s).
-
-  Lemma var_fin_support (s: form) : fin_support (form_supp s) s.
+  Lemma var_fin_support (s: form) : support (Var s) s.
   Proof.
-    split.
-    - induction s as [a|s IHs t IHt|a s IHs].
-      + intros pi H. cbn. rewrite H; cbv; auto.
-      + intros pi H. cbn. rewrite IHs, IHt; auto.
-        * intros a ?. apply H. unfold form_supp in *. cbn. auto using in_or_app.
-        * intros a ?. apply H. unfold form_supp in *. cbn. auto using in_or_app.
-      + intros pi H. cbn. rewrite H, IHs; unfold form_supp; cbn; auto.
-        intros x Vx. apply H. unfold form_supp; cbn. auto.
-    - exists (Var s). intros a H. auto.
+    induction s as [a|s IHs t IHt|a s IHs].
+    - intros pi H. cbn. rewrite H; cbv; auto.
+    - intros pi H. cbn. rewrite IHs, IHt; auto.
+      + intros a ?. apply H. cbn. auto using in_or_app.
+      + intros a ?. apply H. cbn. auto using in_or_app.
+    - intros pi H. cbn. rewrite H, IHs; cbn; auto.
+      intros x Vx. apply H. cbn. auto.
   Qed.
 
   Lemma fresh_atom_form (s: form) : {a | a # s}.
   Proof. eapply fin_support_fresh_atom. apply var_fin_support. Qed.
 
   Lemma var_supp (s : form) :
-    forall a, supp s a <-> form_supp s a.
+    forall a, supp s a <-> In a (Var s).
   Proof.
     intros a. split.
     - apply supp_sub_support. apply var_fin_support.
@@ -466,7 +479,9 @@ Section lambda_calculus.
   Lemma test3 s a b :
     ~ In a (Var s) -> ~ In b (Var s) -> transp_perm a b ** (lam a s) = lam b s.
   Proof.
-    intros H H'. cbn. transpsimpl.
+    intros H H'. cbn. transpsimpl. apply f_equal. apply var_fin_support. intros. cbn.
+    repeat transpsimpl.
+    (* TODO automation *)
   Admitted.
 
   Lemma var_equiv : equivariant_func _ _ Var.
