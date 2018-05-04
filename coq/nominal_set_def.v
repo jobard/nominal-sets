@@ -12,7 +12,11 @@ Set Implicit Arguments.
 (** * Nominal Sets *)
 (* TODO: intro *)
 (** * Groups *)
+(* In this section we define groups and prove very basic lemmas about them.
+   These lemmas will later be used to simplify statements about group elements. *)
 
+(* Groups are a type having an identity element, an inverse function and an operation on
+   elements. The elements respeect the left and right identity as well as inverse laws. *)
 Structure group :=
   {
     group_obj :> Type;
@@ -31,7 +35,7 @@ Notation "x ^-1" := (group_inv _ x) (at level 30, format "x ^-1").
 Notation "x * y" := (group_op _ x y).
 
 (* We show that the right inverse is unique in order to prove the following two well known
-lemmas about inverses. These lemmas can be used to simplify goals. *)
+   lemmas about inverses. These lemmas can be used to simplify goals. *)
 Lemma group_inv_unique (G: group) (g h: G) : g * h = 1 -> g^-1 = h.
 Proof.
   intros H. rewrite <- (group_right_id _ (g^-1)). rewrite <- H, <- group_assoc.
@@ -49,6 +53,8 @@ Proof.
   rewrite group_right_inv, group_left_id. now apply group_right_inv.
 Qed.
 
+(* A homomorphism between groups G and H is a function from G to H which respects the
+   group laws. *)
 Structure homomorphism (G H: group) :=
   {
     hom :> G -> H;
@@ -59,8 +65,10 @@ Structure homomorphism (G H: group) :=
 
 
 (** * G-sets *)
+(* Now we define G-sets and show that these are compositional for product, sum and
+   function types. *)
 
-(* A G-set is a set X with a group action on X which respects the group structure. *)
+(* A G-set is a type X with a group action on X which respects the group structure of G. *)
 Structure G_set (G: group) :=
   {
     G_set_X :> Type;
@@ -77,9 +85,7 @@ Ltac gsimpl :=
   ?group_inv_id, ?group_inv_op,
   ?G_set_id, ?G_set_assoc.
 
-Definition equiv_func {G: group} {X Y: G_set G} (F: X -> Y) :=
-  forall (x: X) (g: G), F (g ** x) = g ** F x.
-
+(* A group element g acts on a pair (x, y) by acting on x and y simpultaneously. *)
 Definition prod_action (G: group) (X Y: G_set G) (g: G) (p: X * Y) : X * Y :=
   match p with
   | (x, y) => (g ** x, g ** y)
@@ -87,49 +93,63 @@ Definition prod_action (G: group) (X Y: G_set G) (g: G) (p: X * Y) : X * Y :=
 
 Arguments prod_action {G X Y}.
 
-Canonical Structure cartesian_prod (G: group) (X Y: G_set G) : G_set G.
+(* Using above action the product of two G-sets X and Y is again a G-set. *)
+Canonical Structure G_set_prod (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X * Y)%type prod_action).
 - intros [x y]. cbn. now gsimpl.
 - intros g h [x y]. cbn. now gsimpl.
 Defined.
 
-Definition union_action (G: group) (X Y: G_set G) (g: G) (s: X + Y) : X + Y :=
+(* Similar to the action on pairs, g acts on a sum s by acting on the by s encapsulated value. *)
+Definition sum_action (G: group) (X Y: G_set G) (g: G) (s: X + Y) : X + Y :=
   match s with
   | inl x => inl (g ** x)
   | inr y => inr (g ** y)
   end.
 
-Arguments union_action {G X Y}.
+Arguments sum_action {G X Y}.
 
-Canonical Structure disjoint_union (G: group) (X Y: G_set G) : G_set G.
-apply (@Build_G_set G (X + Y) union_action).
+(* Above action yields a G-set on the sum of two G-sets. *)
+Canonical Structure G_set_sum (G: group) (X Y: G_set G) : G_set G.
+apply (@Build_G_set G (X + Y) sum_action).
 - intros [x|y]; cbn; now gsimpl.
 - intros g h [x|y]; cbn; now gsimpl.
 Defined.
 
+(* We define the following action on functions from G-set X to G-set Y. *)
 Definition func_action (G: group) (X Y: G_set G) (g: G) (F: X -> Y) : X -> Y :=
-  fun x => g ** F (g ^-1 ** x).
+  fun x => g ** F (g^-1 ** x).
 
 Arguments func_action {G X Y}.
 
+(* By this action we obtain a G-set on functions from G-set X to G-set Y. *)
 Canonical Structure func (G: group) (X Y: G_set G) : G_set G.
 apply (@Build_G_set G (X -> Y) func_action).
 - intros F. unfold func_action. extensionality x. now gsimpl.
 - intros g h F. extensionality x. unfold func_action. now gsimpl.
 Defined.
 
+(* A function F is called equivariant if the group action and the application of F commute. *)
+Definition equiv_func {G: group} {X Y: G_set G} (F: X -> Y) :=
+  forall (x: X) (g: G), F (g ** x) = g ** F x.
+
+(* We call a subset (given as predicate P) of a G-set X equivariant if it is closed under
+   group actions. *)
 Definition equiv_subset (G: group) (X: G_set G) (P: X -> Prop) :=
   forall g x, P x -> P (g ** x).
 
 
 (** * Permutations *)
+(* In this section we define permutations and show that they form a group called Perm.
+   For Perm-sets X (G-sets with Perm as underlying group) we define the notion of support
+   and use it to state when a name is unused/fresh for a given element of X. *)
 
 (* We use the natural numbers as atoms, i.e. names. This is convenient since for a finite
-structure we can easily find an unused name. *)
+   structure we can easily find an unused/fresh name. *)
 Definition atom := nat.
 
 (* Permutations are bijective functions over atoms. We model this by requiring the existence
-of an inverse function. *)
+   of an inverse function. *)
 Structure perm :=
   {
     perm_f:> atom -> atom;
@@ -139,26 +159,28 @@ Structure perm :=
   }.
 
 (* Permutations form a group. Thus we define identity and inverse permutations, as well as
-the composition operation on permutations. *)
+   the composition operation on permutations. *)
 Definition perm_id : perm.
-apply (@Build_perm (@id atom) (@id atom)); intros a; reflexivity.
+  apply (@Build_perm (@id atom) (@id atom)); intros a; reflexivity.
 Defined.
 
 Definition perm_inv (pi: perm) : perm.
-destruct pi as [f g H1 H2]. apply (Build_perm g f H2 H1).
+  destruct pi as [f g H1 H2]. apply (Build_perm g f H2 H1).
 Defined.
 
 Definition perm_op (pi pi': perm) : perm.
-destruct pi as [f g H1 H2]. destruct pi' as [f' g' H3 H4].
-apply (Build_perm (compose f f') (compose g' g)).
-- intros a. unfold compose. now rewrite H3, H1.
-- intros a. unfold compose. now rewrite H2, H4.
+  destruct pi as [f g H1 H2]. destruct pi' as [f' g' H3 H4].
+  apply (Build_perm (compose f f') (compose g' g)).
+  - intros a. unfold compose. now rewrite H3, H1.
+  - intros a. unfold compose. now rewrite H2, H4.
 Defined.
 
+(* The following axiom states that permutations are uniquely determined by their behavior
+   on atoms. *)
 Axiom perm_eq : forall (pi pi': perm), (forall a, pi a = pi' a) -> pi = pi'.
 
 (* Using the above definitions we obtain the symmetric group, i.e. group of permutations.
-We denote this group by Perm. *)
+   We denote this group by Perm. *)
 Canonical Structure group_perm : group.
 apply (@Build_group _ perm_id perm_inv perm_op).
 - intros pi1 pi2 pi3. apply perm_eq. intros a. destruct pi1, pi2, pi3. unfold perm_op.
@@ -173,33 +195,16 @@ apply (@Build_group _ perm_id perm_inv perm_op).
   unfold id, compose. auto.
 Defined.
 
+(* We choose a convenient name for the type of Perm-sets. *)
 Definition perm_set := G_set group_perm.
 
-(* A predicate on atoms supports an element x of a Perm-set X if the action of every permutation
-which is the identity on elements of A does not change x aswell. *)
+(* A list of atoms A supports an element x of a Perm-set X if each permutation which
+   holds all elements of A does not change x aswell. This means all atoms which are
+   not in A do not play a role in x in some sense. *)
 Definition support {X: perm_set} (A: list atom) (x: X) :=
   forall (pi: perm), (forall a, In a A -> pi a = a) -> pi ** x = x.
 
-(* If all elements of a Perm-set X are fintely supported (there is a finte predicate that
-supports the element) then then we call X a nominal set. *)
-Definition nominal (X: perm_set) := forall (x: X), { A : _ & support A x}.
-
-(* The predicate supp is the intersection of all predicates that support the given element x. *)
-Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> In a A.
-
-Lemma supp_sub_support (X: perm_set) A (x: X) :
-  support A x -> forall a, supp x a -> In a A.
-Proof.
-  intros S a H. apply H, S.
-Qed.
-
-Definition freshness {X Y: perm_set} (x: X) (y: Y) :=
-  forall a, ~ (supp x a /\ supp y a).
-
-Definition atom_freshness {Y: perm_set} a (y: Y) := ~ supp y a.
-
-Notation "a # y" := (atom_freshness a y) (at level 40).
-
+(* In the special case of functions on Perm-sets we can characterize support more precisely. *)
 Lemma support_func (X Y: perm_set) (A: list atom) (F: X -> Y) :
   support A F <-> forall (pi: perm), (forall a, In a A -> pi a = a) -> forall x, F (pi ** x) = pi ** F x.
 Proof.
@@ -212,14 +217,45 @@ Proof.
     now rewrite <- H' at 1.
 Qed.
 
+(* If all elements of a Perm-set X are supported, i.e. there is a list A supports the
+   element, then then we call X nominal. *)
+Definition nominal (X: perm_set) := forall (x: X), { A : _ & support A x}.
 
-(** * Finite Permutations *)
+(* The predicate supp is the intersection of all supports of the given element x.
+   It characterizes the atoms that are relevant for x in some sense. *)
+Definition supp {X: perm_set} (x: X) := fun a => forall A, support A x -> In a A.
 
+(* The predicate supp is true only for elements of every support A. *)
+Lemma supp_sub_support (X: perm_set) A (x: X) :
+  support A x -> forall a, supp x a -> In a A.
+Proof.
+  intros S a H. apply H, S.
+Qed.
+
+(* We say an atom a is fresh in y if it is not in (supp y). This means is not
+   relevant for y. *)
+Definition atom_freshness {Y: perm_set} a (y: Y) := ~ supp y a.
+
+Notation "a # y" := (atom_freshness a y) (at level 40).
+
+(* In general, x is fresh for y if the intersection of (supp x) and (supp y) is empty.
+   So, there is no atom relevant for both of them. *)
+Definition freshness {X Y: perm_set} (x: X) (y: Y) :=
+  forall a, ~ (supp x a /\ supp y a).
+
+
+(** ** Finite Permutations *)
+(* In this subsection we consider the special case of finite permutations. Those are
+   permutations that change only finitely many atoms. *)
+
+(* Finite permutations change only finitely many atoms. *)
 Definition fin_perm (pi: perm) := exists l, forall a, ~ In a l -> pi a = a.
 
+(* Transpositions swap two atoms a and b. *)
 Definition transp (a b c: atom) :=
   if (Nat.eq_dec c a) then b else if (Nat.eq_dec c b) then a else c.
 
+(* We define a tactic to simplify transpositions. *)
 Ltac transpsimpl :=
   match goal with
   | [ |- context C[transp] ] => unfold transp; transpsimpl
@@ -230,63 +266,80 @@ Ltac transpsimpl :=
   | _ => try congruence
   end.
 
+(* Transpositions are involutions, i.e. self-invers. *)
 Lemma transp_involution a b c : transp a b (transp a b c) = c.
 Proof.
   repeat transpsimpl; congruence.
 Qed.
 
+(* Clearly, transpositions are permutations. *)
 Canonical Structure transp_perm (a b: atom) : perm :=
   Build_perm (transp a b) (transp a b) (transp_involution a b) (transp_involution a b).
 
+(* Especially, transpositions are finite transpositions. *)
 Lemma transp_fin_perm (a b: atom) : fin_perm (transp_perm a b).
 Proof.
   exists [a;b]. cbn. intros x H. repeat transpsimpl; exfalso; auto.
 Qed.
 
+(* We define a tactic to simplify transpositions seen as permutations. *)
 Ltac transptac :=
   match goal with
   | [ |- context C[transp_perm] ] => (progress cbn); transptac
-  | _ => (* try apply f_equal; *) repeat transpsimpl
+  | _ => repeat transpsimpl
   end.
 
+(** * Fresh Names *)
+(* In this section we show how to get a fresh name/atom for a element x given a
+   support A for x. One possibility is to compute the maximum of A and taking the
+   successor of it. This atom is not contained in A and thus fresh for x. *)
 
 Module fresh_atom.
-  Definition max_list l := fold_left max l 0.
-  Definition new_atom l := S (max_list l).
+  (* Compute the maximum of al list A by folding A. *)
+  Definition max_list A := fold_left max A 0.
 
-  Lemma fold_max_mono l n m : n <= m -> fold_left max l n <= fold_left max l m.
+  (* Take the successor of the maximum to obtain a new atom. *)
+  Definition new_atom A := S (max_list A).
+
+  (* We prove that (fold_left max A) is monotone and increasing for a list A. *)
+  Lemma fold_max_mono A n m : n <= m -> fold_left max A n <= fold_left max A m.
   Proof.
-    revert n m. induction l; auto with arith.
-    intros n m H. cbn. now apply IHl, Nat.max_le_compat_r.
+    revert n m. induction A as [|a A IH]; auto with arith.
+    intros n m H. cbn. now apply IH, Nat.max_le_compat_r.
   Qed.
 
-  Lemma fold_max_inc l b : b <= fold_left max l b.
+  Lemma fold_max_inc A b : b <= fold_left max A b.
   Proof.
-    induction l; auto.
-    cbn. eapply le_trans. now apply IHl. apply fold_max_mono, Nat.le_max_l.
+    induction A as [|a A IH]; auto.
+    cbn. eapply le_trans. now apply IH. apply fold_max_mono, Nat.le_max_l.
   Qed.
 
-  Lemma all_le l : forall a, In a l -> a <= max_list l.
+  (* We use both above lemmas to show that the maximum of A is larger or equal to
+     all elements of A. *)
+  Lemma all_le A : forall a, In a A -> a <= max_list A.
   Proof.
-    induction l as [| b l IH]; intros a; [intros []|intros [E|H]].
+    induction A as [| b A IH]; intros a; [intros []|intros [E|H]].
     - rewrite E. cbn. apply fold_max_inc.
     - eapply le_trans. now apply IH. cbn. apply fold_max_mono. auto with arith.
   Qed.
 
-  Lemma new_atom_fresh l a : new_atom l <= a -> ~ In a l.
+  (* Using above lemma we see that the new atom cannot be contained in A. *)
+  Lemma new_atom_fresh A a : new_atom A <= a -> ~ In a A.
   Proof.
     intros H H'. eapply Nat.nle_succ_diag_l.
     eapply Nat.le_trans; [exact H | now apply all_le].
   Qed.
 
-  Lemma fresh_atom l: {a: atom | ~ In a l}.
+  (* Thus, the new atom is a witness for a fresh one. *)
+  Lemma fresh_atom A: {a: atom | ~ In a A}.
   Proof.
-    exists (new_atom l). intros H. now eapply new_atom_fresh, H.
+    exists (new_atom A). intros H. now eapply new_atom_fresh, H.
   Qed.
 
 End fresh_atom.
 
-(* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
+(* We can show now that if x has a support than we can compute a fresh atom for x
+   using the above construcion . *)
 Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
 Proof.
   intros H. destruct (fresh_atom.fresh_atom A) as [a H'].
