@@ -1,6 +1,7 @@
 -R . nominal_set
 -install none
-COQDOCFLAGS = "--charset utf-8 -s --parse-comments --with-header ../website/resources/header.html --with-footer ../website/resources/footer.html --index indexpage"
+COQDOCFLAGS = "--charset utf-8 --parse-comments --with-header ../website/resources/header.html --with-footer ../website/resources/footer.html --index indexpage --toc --toc-depth 2 --html --interpolate --no-lib-name"
 
 nominal_set_def.v
+case_studies.v
 
