@@ -340,7 +340,7 @@ End fresh_atom.
 
 (* We can show now that if x has a support than we can compute a fresh atom for x
    using the above construcion . *)
-Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
+Lemma support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
 Proof.
   intros H. destruct (fresh_atom.fresh_atom A) as [a H'].
   exists a. intros Su. unfold supp in Su. apply H', Su, H.

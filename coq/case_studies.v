@@ -12,71 +12,42 @@ Require Import nominal_set_def.
 Set Implicit Arguments.
 
 
-(** * Case Studies for Atoms, Lists and a Lambda Calculus *)
-
-(*
-Module fresh_atom.
-  Definition max_list l := fold_left max l 0.
-  Definition new_atom l := S (max_list l).
-
-  Lemma fold_max_mono l n m : n <= m -> fold_left max l n <= fold_left max l m.
-  Proof.
-    revert n m. induction l; auto with arith.
-    intros n m H. cbn. now apply IHl, Nat.max_le_compat_r.
-  Qed.
-
-  Lemma fold_max_inc l b : b <= fold_left max l b.
-  Proof.
-    induction l; auto.
-    cbn. eapply le_trans. now apply IHl. apply fold_max_mono, Nat.le_max_l.
-  Qed.
-
-  Lemma all_le l : forall a, In a l -> a <= max_list l.
-  Proof.
-    induction l as [| b l IH]; intros a; [intros []|intros [E|H]].
-    - rewrite E. cbn. apply fold_max_inc.
-    - eapply le_trans. now apply IH. cbn. apply fold_max_mono. auto with arith.
-  Qed.
-
-  Lemma new_atom_fresh l a : new_atom l <= a -> ~ In a l.
-  Proof.
-    intros H H'. eapply Nat.nle_succ_diag_l.
-    eapply Nat.le_trans; [exact H | now apply all_le].
-  Qed.
-
-  Lemma fresh_atom l: {a: atom | ~ In a l}.
-  Proof.
-    exists (new_atom l). intros H. now eapply new_atom_fresh, H.
-  Qed.
-
-End fresh_atom.
-
-(* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
-Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
-Proof.
-  intros H. destruct (fresh_atom.fresh_atom A) as [a H'].
-  exists a. intros Su. unfold supp in Su. apply H', Su, H.
-Qed.
-*)
+(** Case Studies for Atoms, Lists and a Lambda Calculus *)
+(* TODO: intro *)
 
 
 (** * Case Study: Atom as Perm-set *)
+(* In out first case study we have a look at atoms as Perm-set. We show that this
+   Perm-set is even nominal and characterize supp precisely. Also, both freshness
+   notions coincide in this case. *)
 
 Section atom.
-  (* We can define an action of permutations on atoms. *)
+  (* We can define an action of permutations on atoms by function application. *)
   Definition action_atom (pi: perm) a := pi a.
 
-  (* Using the above action we can transform the set of atoms into a Perm-set. *)
-  Canonical Structure G_set_atom : perm_set.
+  (* Using the above action we can transform the type of atoms into a Perm-set. *)
+  Canonical Structure perm_set_atom : perm_set.
   apply (@Build_G_set group_perm atom action_atom).
   - intros a. now cbn.
   - intros g h x. now destruct g, h.
   Defined.
 
-  (* This Perm-set over atoms is even nominal. *)
-  Lemma nominal_atom : nominal G_set_atom.
-  Proof. intros a. exists [a]. intros pi H. apply H. now constructor. Qed.
+  (* From the definitions it follows that [a] supports a. *)
+  Lemma support_atom a : support [a] a.
+  Proof. intros pi H. auto using in_eq. Qed.
 
+  (* Thus, this Perm-set over atoms is even nominal. *)
+  Lemma nominal_atom : nominal perm_set_atom.
+  Proof. intros a. exists [a]. apply support_atom. Qed.
+
+  (* There is always a fresh atom for an atom a. *)
+  Lemma fresh_atom (a: atom) : {x | x # a}.
+  Proof. apply (@support_fresh_atom _ [a]). apply support_atom. Qed.
+
+  (* We show that supp is reflexive. Given a support A for a, we use a transposition
+     pi of a and b, where b is an atom different from a not occuring in A. The proof
+     is closed by a case distinction whether A contains a or not. The tactics for
+     transpositions are helpful to deal with the pi in a nice way. *)
   Lemma supp_atom_refl a : supp a a.
   Proof.
     intros A Sa.
@@ -94,11 +65,13 @@ Section atom.
         transptac; exfalso; subst; auto.
   Qed.
 
+  (* It follows easliy that the atoms for which supp holds are unique. *)
   Lemma supp_atom_unique a x : supp a x -> x = a.
-    intros S. destruct (S [a]) as [H|[]]; auto.
-    intros pi H. apply H. now constructor.
+  Proof.
+    intros S. destruct (S [a]) as [H|[]]; auto using support_atom.
   Qed.
 
+  (* Both lemmas above characterize supp precisely. *)
   Lemma atom_supp a x : supp a x <-> x = a.
   Proof.
     split.
@@ -106,6 +79,8 @@ Section atom.
     - intros E. rewrite E. apply supp_atom_refl.
   Qed.
 
+  (* By using the precise characterization of supp, we can show that both freshness
+     notions coincide. *)
   Lemma freshness_not_supp {Y: perm_set} a (y: Y) : freshness a y <-> a # y.
   Proof.
     split.
@@ -115,13 +90,19 @@ Section atom.
 
 End atom.
 
+
 (** * Case Study: List as Perm-set *)
+(* Our second case study regards lists over a Perm-set as Perm-set. If we restrict 
+   ourselves to lists over atoms then this Perm-set is nominal and supp of some list
+   is precisely characterized by the list itself. *)
 
 Section list.
 
+  (* A permutation acts on a list by acting on all elements. *)
   Definition action_list (X: perm_set) (pi: perm) (l: list X) :=
     map (fun x => (pi ** x)) l.
 
+  (* Above action results in a Perm-set. *)
   Canonical Structure perm_set_list (X: perm_set) : perm_set.
   apply (Build_G_set group_perm (action_list X)).
   - intros l. induction l as [|x l IHl]; auto. cbn. gsimpl.
@@ -130,16 +111,24 @@ Section list.
     cbn. gsimpl. unfold action_list in IHl. cbn in IHl. now rewrite IHl.
   Defined.
 
+  (* Support is reflexive for lists over atom. *)
   Lemma list_support_refl A : support A A.
   Proof.
     induction A as [|a A IH]; intros pi H; auto.
     cbn. rewrite H; [|left; now auto].
-    unfold support in IH. cbn in IH. unfold action_list in IH. rewrite IH; auto using in_cons.
+    unfold support in IH. cbn in IH. unfold action_list in IH.
+    rewrite IH; auto using in_cons.
   Qed.
 
-  Lemma fresh_atom_list (l: list atom) : {a | a # l}.
-  Proof. eapply fin_support_fresh_atom. eapply list_support_refl. Qed.
+  (* Thus, the Perm-set of lists over atoms is nominal. *)
+  Lemma nominal_list : nominal (perm_set_list (perm_set_atom)).
+  Proof. intros A. exists A. apply list_support_refl. Qed.
 
+  (* There is always a fresh atom for a list. *)
+  Lemma fresh_atom_list (l: list atom) : {a | a # l}.
+  Proof. eapply support_fresh_atom. eapply list_support_refl. Qed.
+
+  (* Supp of a list is precisely characterized by the list itself. *)
   Lemma list_supp (l : list atom) :
     forall a, supp l a <-> In a l.
   Proof.
@@ -157,14 +146,21 @@ End list.
 
 
 (** * Case Study: A Lambda Calculus as Perm-set *)
+(* Our last case study is about a lambda calculus. We show again that this is a
+   nominal Perm-set and supp is precisely characterized by the occuring variables.
+   The function computing the occuring variables is also equivariant. *)
 
 Section lambda_calculus.
 
+  (* Our formulas consists of variables, function applications and lambda terms which
+     bind a atom. *)
   Inductive form :=
     var (a: atom) : form
   | app (s t: form) : form
   | lam (a: atom) (s: form) : form.
 
+  (* The action of a permutation is performed on all variables including those bound
+     by lambda terms. *)
   Fixpoint action_form (pi: perm) (s: form) :=
     match s with
     | var a => var (pi a)
@@ -172,6 +168,7 @@ Section lambda_calculus.
     | lam a s => lam (pi a) (action_form pi s)
     end.
 
+  (* Above action yields a Perm-set on formulas. *)
   Canonical Structure perm_set_form : perm_set.
   apply (Build_G_set group_perm action_form).
   - intros s. induction s as [a|s IHs t IHt|a s IHs]; cbn in *; auto.
@@ -184,6 +181,7 @@ Section lambda_calculus.
     + rewrite IHs. now destruct pi, pi'; cbn.
   Defined.
 
+  (* We can compute the variables occuring in a formula. *)
   Fixpoint Var (s : form) :=
     match s with
     | var a => [a]
@@ -191,7 +189,16 @@ Section lambda_calculus.
     | lam a s => a :: Var s
     end.
 
-  Lemma var_fin_support (s: form) : support (Var s) s.
+  (* The function Var is equivariant. *)
+  Lemma var_equiv : equiv_func Var.
+  Proof.
+    intros s pi. induction s as [a|s IHs t IHt|a s IHs]; auto.
+    - cbn. cbn in IHs, IHt. rewrite IHs, IHt. now rewrite map_app.
+    - cbn. cbn in IHs. now rewrite IHs.
+  Qed.
+
+  (* The list of occuring variables supports a formula. *)
+  Lemma var_support (s: form) : support (Var s) s.
   Proof.
     induction s as [a|s IHs t IHt|a s IHs].
     - intros pi H. cbn. rewrite H; cbv; auto.
@@ -202,14 +209,21 @@ Section lambda_calculus.
       intros x Vx. apply H. cbn. auto.
   Qed.
 
-  Lemma fresh_atom_form (s: form) : {a | a # s}.
-  Proof. eapply fin_support_fresh_atom. apply var_fin_support. Qed.
+  (* Thus, the Perm-set of formulas is nominal. *)
+  Lemma nominal_form : nominal (perm_set_form).
+  Proof. intros s. exists (Var s). apply var_support. Qed.
 
+  (* There is always a fresh atom for a formula s. *)
+  Lemma fresh_atom_form (s: form) : {a | a # s}.
+  Proof. eapply support_fresh_atom. apply var_support. Qed.
+
+  (* Supp is precisely characterized by the list of occuring variables.
+     This follows by induction and the fact that supp is reflexive on atoms. *)
   Lemma var_supp (s : form) :
     forall a, supp s a <-> In a (Var s).
   Proof.
     intros a. split.
-    - apply supp_sub_support. apply var_fin_support.
+    - apply supp_sub_support. apply var_support.
     - induction s as [x|s IHs t IHt|x s IHs]; cbn; intros H A S.
       + destruct H as [E| []]. rewrite E in S. apply supp_atom_refl.
         intros pi H. specialize (S pi H). now injection S.
@@ -237,16 +251,8 @@ Section lambda_calculus.
   Lemma test3 s a b :
     ~ In a (Var s) -> ~ In b (Var s) -> transp_perm a b ** (lam a s) = lam b s.
   Proof.
-    intros H H'. transptac. apply f_equal. apply var_fin_support. intros.
+    intros H H'. transptac. apply f_equal. apply var_support. intros.
     transptac.
-    (* TODO automation *)
-  Qed.
-
-  Lemma var_equiv : equiv_func Var.
-  Proof.
-    intros s pi. induction s as [a|s IHs t IHt|a s IHs]; auto.
-    - cbn. cbn in IHs, IHt. rewrite IHs, IHt. now rewrite map_app.
-    - cbn. cbn in IHs. now rewrite IHs.
   Qed.
 
 End lambda_calculus.
