@@ -1,3 +1,7 @@
+coq/Makefile.coq
+coq/Makefile.coq.conf
+website/*.html
+
 .*.aux
 *.a
 *.cma
