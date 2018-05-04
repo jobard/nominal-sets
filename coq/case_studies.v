@@ -13,7 +13,7 @@ Set Implicit Arguments.
 
 
 (** Case Studies for Atoms, Lists and a Lambda Calculus *)
-(* TODO: intro *)
+(* We show that atoms, lists and a lambda calculus are all nominal Perm-sets. *)
 
 
 (** * Case Study: Atom as Perm-set *)

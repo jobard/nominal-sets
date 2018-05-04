@@ -9,8 +9,12 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
-(** * Nominal Sets *)
-(* TODO: intro *)
+(** Nominal Sets *)
+(* In 2011, Andrew Pitts published his paper 'Nominal Sets'. We formalize parts of
+chapter 1 to 3 of his paper, which can be found at:
+#<a href="http://www.cs.nott.ac.uk/~pszvc/mgs/MGS2011_nominal_sets.pdf">
+http://www.cs.nott.ac.uk/~pszvc/mgs/MGS2011_nominal_sets.pdf</a># *)
+
 (** * Groups *)
 (* In this section we define groups and prove very basic lemmas about them.
    These lemmas will later be used to simplify statements about group elements. *)
