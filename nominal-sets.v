@@ -183,8 +183,10 @@ Definition transp (a b c: atom) :=
 Ltac transpsimpl :=
   match goal with
   | [ |- context C[transp] ] => unfold transp; transpsimpl
-  | [ |- context C[Nat.eq_dec ?a ?a] ] => let H := fresh "H" in destruct (Nat.eq_dec a a) as [_|H]; [idtac | exfalso; apply H; reflexivity]
-  | [ |- context C[Nat.eq_dec ?a ?b] ] => let H := fresh "H" in destruct (Nat.eq_dec a b) as [H|H]; [rewrite H|idtac]
+  | [ |- context C[Nat.eq_dec ?a ?a] ] => let H := fresh "H" in destruct (Nat.eq_dec a a) as [_|H];
+                                                              [| exfalso; apply H; reflexivity]
+  | [ |- context C[Nat.eq_dec ?a ?b] ] => let H := fresh "H" in destruct (Nat.eq_dec a b) as [H|H];
+                                                              [rewrite H|]
   | _ => try congruence
   end.
 
@@ -200,6 +202,12 @@ Lemma transp_fin_perm (a b: atom) : fin_perm (transp_perm a b).
 Proof.
   exists [a;b]. cbn. intros x H. repeat transpsimpl; exfalso; auto.
 Qed.
+
+Ltac transptac :=
+  match goal with
+  | [ |- context C[transp_perm] ] => (progress cbn); transptac
+  | _ => (* try apply f_equal; *) repeat transpsimpl
+  end.
 
 Definition perm_set := G_set group_perm.
 
@@ -218,11 +226,11 @@ Qed.
 
 (* The predicate A on atoms is finite, if there are only finitely many atoms for wich A is true.
 That means there is a list of all such atoms. *)
-Definition fin_pred (A: atom -> Prop) := { l | forall a, A a ->  In a l }.
+Definition fin_pred (A: atom -> Prop) := { l | forall a, A a -> In a l }.
 
 Hint Unfold fin_pred.
 
-Module atom_not_in_fin_pred.
+Module fresh_atom.
   Definition max_list l := fold_left max l 0.
   Definition new_atom l := S (max_list l).
 
@@ -246,16 +254,18 @@ Module atom_not_in_fin_pred.
     - eapply le_trans. now apply IH. cbn. apply fold_max_mono. auto with arith.
   Qed.
   
-  Lemma new_atom_not_in_list l : ~ In (new_atom l) l.
+  Lemma new_atom_fresh l a : new_atom l <= a -> ~ In a l.
   Proof.
-    intros H. apply all_le in H. unfold new_atom in H. revert H. apply Nat.nle_succ_diag_l.
+    intros H H'. eapply Nat.nle_succ_diag_l.
+    eapply Nat.le_trans; [exact H | now apply all_le].
   Qed.
 
-  Lemma new_atom_list l: { a:atom | ~ In a l}.
+  Lemma fresh_atom l: {a: atom | ~ In a l}.
   Proof.
-    exists (new_atom l). intros H. eapply new_atom_not_in_list, H.
+    exists (new_atom l). intros H. now eapply new_atom_fresh, H.
   Qed.
-End atom_not_in_fin_pred.
+
+End fresh_atom.
 
 (*
 Definition fin_support {X: perm_set} (A: atom -> Prop) (x: X) := (support A x * fin_pred A)%type.
@@ -313,33 +323,29 @@ Proof.
     now rewrite <- H' at 1.
 Qed.
 
-(*
-Lemma not_support a A : ~ A a -> ~ support A a.
-Proof.
-  pose (pi := transp_perm a (S a)).
-  assert (H: pi ** a <> a) by (cbn; transpsimpl; auto).
-  intros nAa Sa. specialize (Sa pi). 
-
-  apply H, Sa. intros x Ax. cbn. repeat transpsimpl. exfalso.
-  apply nAa. rewrite <- Sa. admit.
-  assert (Hx: pi ** x <> x) by (cbn; repeat transpsimpl; congruence).
-  
-  
-Admitted.
-*)
-
-(* TODO *)
 Lemma supp_atom_refl a : supp a a.
 Proof.
-  intros A S. unfold support in S.
-Admitted.
+  intros A Sa.
+  pose (b := fresh_atom.new_atom (a::A)).
+  assert (Hb: ~ In b A).
+  - intros H. eapply (@fresh_atom.new_atom_fresh (a::A)); try reflexivity.
+    now apply in_cons.
+  - assert (nE: a <> b).
+    + intros E. eapply (@fresh_atom.new_atom_fresh (a::A)); try reflexivity.
+      rewrite E at 2. apply in_eq.
+    + pose (pi := transp_perm a b).
+      destruct (in_dec eq_nat_dec a A); auto.
+      assert (H: pi ** a <> a) by (cbn; transpsimpl; auto).
+      exfalso. apply H, Sa. intros x Hx. unfold pi.
+      transptac; exfalso; subst; auto.
+Qed.
 
 Lemma supp_atom_unique a x : supp a x -> x = a.
   intros S. destruct (S [a]) as [H|[]]; auto.
   intros pi H. apply H. now constructor.
 Qed.
 
-Lemma supp_atom a x : supp a x <-> x = a.
+Lemma atom_supp a x : supp a x <-> x = a.
 Proof.
   split.
   - apply supp_atom_unique.
@@ -365,7 +371,7 @@ Notation "a # y" := (atom_freshness a y) (at level 40).
 (* We can show now that if x has fintite support than we can compute a fresh atom for x. *)
 Lemma fin_support_fresh_atom (X: perm_set) A (x: X) : support A x -> {a | a # x}.
 Proof.
-  intros H. destruct (atom_not_in_fin_pred.new_atom_list A) as [a H'].
+  intros H. destruct (fresh_atom.fresh_atom A) as [a H'].
   exists a. intros Su. unfold supp in Su. apply H', Su, H.
 Qed.
 
@@ -388,13 +394,27 @@ Section list.
     cbn. gsimpl. unfold action_list in IHl. cbn in IHl. now rewrite IHl.
   Defined.
 
-  (* TODO nominal *)
-  (* Lemma list_support_refl (X: perm_set) (l: list X) : support l l. *)
-  Lemma list_support_refl l : support l l.
+  Lemma list_support_refl A : support A A.
   Proof.
-    induction l as [|a l IHl]; intros pi H; auto.
+    induction A as [|a A IH]; intros pi H; auto.
     cbn. rewrite H; [|left; now auto].
-    unfold support in IHl. cbn in IHl. unfold action_list in IHl. rewrite IHl; auto using in_cons.
+    unfold support in IH. cbn in IH. unfold action_list in IH. rewrite IH; auto using in_cons.
+  Qed.
+
+  Lemma fresh_atom_list (l: list atom) : {a | a # l}.
+  Proof. eapply fin_support_fresh_atom. eapply list_support_refl. Qed.
+
+  Lemma list_supp (l : list atom) :
+    forall a, supp l a <-> In a l.
+  Proof.
+    intros a. split.
+    - apply supp_sub_support. apply list_support_refl.
+    - induction l as [|x l IH]; cbn; intros H A S.
+      + destruct H.
+      + destruct H as [E| Ha].
+        * rewrite E in S. apply supp_atom_refl.
+          intros pi H. specialize (S pi H). now injection S.
+        * apply IH; auto. intros pi H. specialize (S pi H). now injection S.
   Qed.
 
 End list.
@@ -467,20 +487,21 @@ Section lambda_calculus.
   Lemma test1 a b :
     transp_perm a b ** (lam a (var a)) = lam b (var b).
   Proof.
-    cbn. now transpsimpl.
+    transptac.
   Qed.
 
   Lemma test2 a b :
     transp_perm a b ** (lam a (var a)) = transp_perm b a ** lam a (var a).
   Proof.
-    cbn. repeat transpsimpl.
+    transptac.
   Qed.
 
   Lemma test3 s a b :
     ~ In a (Var s) -> ~ In b (Var s) -> transp_perm a b ** (lam a s) = lam b s.
   Proof.
-    intros H H'. cbn. transpsimpl. apply f_equal. apply var_fin_support. intros. cbn.
-    repeat transpsimpl.
+    intros H H'. transptac. apply f_equal. apply var_fin_support. intros.
+    unfold transp_perm. unfold perm_f.
+    transptac.
     (* TODO automation *)
   Admitted.
 
